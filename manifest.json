@@ -1,10 +1,10 @@
 {
-  "name": "Meu Formulário Offline",
-  "short_name": "FormPWA",
+  "name": "Gestão de Neoplasias | SESC",
+  "short_name": "NeoplasiasSESC",
   "start_url": "index.html",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#f5f5f5",
+  "theme_color": "#0b3c5d",
   "icons": [
     {
       "src": "icon.png",
