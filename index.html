@@ -1,14 +1,438 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <title>Relatório SESC</title>
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-        iframe { width: 100%; height: 100%; border: none; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gestão de Neoplasias | SESC</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b3c5d">
+<link rel="apple-touch-icon" href="icon.png">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+* { box-sizing: border-box; margin:0; padding:0; font-family: 'Arial', sans-serif; }
+body { background: #f5f5f5; padding: 20px; color: #333; }
+
+.container {
+  max-width: 950px;
+  margin: auto;
+  background: #fff;
+  padding: 25px 30px;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+}
+
+h1 { color: #0b3c5d; font-weight: bold; font-size: 22px; text-align: center; margin-bottom: 4px; }
+h2 { color: #0b3c5d; font-weight: bold; font-size: 12px; text-align: center; margin-bottom: 20px; letter-spacing: 0.5px; }
+
+form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 10px; align-items:end; }
+
+label { font-weight: bold; font-size: 13px; }
+
+/* SELETOR DE MÊS DESTACADO */
+#mesSelecionado {
+  width: auto;
+  min-width: 250px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 2px solid #0b3c5d;
+  font-size: 18px;
+  font-weight: bold;
+  color: #0b3c5d;
+  background-color: #fff;
+  cursor: pointer;
+  margin-top: 5px;
+}
+
+input[type="text"], input[type="tel"], select {
+  width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; transition: border 0.3s, box-shadow 0.3s;
+}
+input:focus, select:focus { border: 2px solid #0b3c5d; outline: none; box-shadow: 0 0 8px rgba(11,60,93,0.2); }
+
+.button-group {
+  display: flex; justify-content: center; gap: 12px; grid-column: 1 / -1; margin-top: 10px;
+}
+
+.backup-group {
+  display: flex; justify-content: center; gap: 10px; grid-column: 1 / -1; margin-bottom: 25px; padding-top: 5px;
+}
+
+button {
+  padding: 10px 18px; font-size: 13px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; transition: background 0.3s;
+}
+button:hover { opacity: 0.9; }
+button.add { background-color: #0b3c5d; color: #fff; }
+button.report { background-color: #43a047; color: #fff; }
+button.edit { background-color: #f0ad4e; color: #fff; }
+button.delete { background-color: #e53935; color: #fff; }
+
+button.backup-btn { 
+  background-color: #f1f3f4; color: #5f6368; font-size: 11px; padding: 6px 12px; border: 1px solid #dadce0;
+}
+button.backup-btn:hover { background-color: #e8eaed; }
+
+.list-container { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+
+.patient-card {
+  background: #eef4fb; padding: 12px 14px; border-radius: 10px; display: flex;
+  justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 8px;
+}
+
+.patient-info { display: flex; flex-direction: column; gap: 3px; }
+.actions { display: flex; gap: 8px; }
+
+@media(max-width:600px){
+  form { grid-template-columns: 1fr; }
+  .patient-card { flex-direction: column; align-items: flex-start; }
+  .actions { margin-top: 6px; }
+  .button-group, .backup-group { flex-direction: column; align-items: stretch; }
+}
+</style>
 </head>
 <body>
-    <iframe src="sesc.html"></iframe>
+
+<div class="container">
+  <h1>Formulário Hospitalar de Neoplasias</h1>
+  <h2>Gestão e Relatórios Estáticos</h2>
+
+  <div style="text-align:center; margin-bottom:25px;">
+    <label for="mesSelecionado" style="display:block; margin-bottom:5px;">Consultar mês:</label>
+    <select id="mesSelecionado" onchange="carregarPacientesMes()"></select>
+  </div>
+
+  <form id="formPaciente" onsubmit="event.preventDefault(); adicionarPaciente();">
+    <div>
+      <label for="nome">Nome do Paciente:</label>
+      <input type="text" id="nome" placeholder="Digite o nome" oninput="this.value=this.value.toUpperCase()" required>
+    </div>
+
+    <div>
+      <label for="telefone">Telefone:</label>
+      <input type="tel" id="telefone" placeholder="(xx)xxxxx-xxxx" oninput="mascaraTelefone(this)" maxlength="14" required>
+    </div>
+
+    <div>
+      <label for="categoria">Categoria:</label>
+      <select id="categoria" onchange="atualizaSubcategorias()" required>
+        <option value="">-- Selecione --</option>
+        <option value="CÉLULAS ATÍPICAS DE SIGNIFICADO INDETERMINADO">CÉLULAS ATÍPICAS DE SIGNIFICADO INDETERMINADO</option>
+        <option value="ATIPIAS EM CÉLULAS ESCAMOSAS">ATIPIAS EM CÉLULAS ESCAMOSAS</option>
+        <option value="ATIPIAS EM CÉLULAS GLANDULARES">ATIPIAS EM CÉLULAS GLANDULARES</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="subcategoria">Subcategoria:</label>
+      <select id="subcategoria" required>
+        <option value="">-- Selecione --</option>
+      </select>
+    </div>
+
+    <div class="button-group">
+      <button type="submit" class="add">Adicionar Paciente</button>
+      <button type="button" class="report" onclick="gerarPDF()">Gerar Relatório</button>
+      <button type="button" class="delete" onclick="limparComSeguranca()">Limpar Formulário</button>
+    </div>
+
+    <div class="backup-group">
+      <button type="button" class="backup-btn" onclick="exportarBackup()">💾 Exportar Backup Geral</button>
+      <button type="button" class="backup-btn" onclick="document.getElementById('inputBackup').click()">📂 Importar Backup</button>
+      <input type="file" id="inputBackup" style="display:none" onchange="importarBackup(event)">
+    </div>
+  </form>
+
+  <div class="list-container" id="listaPacientes"></div>
+</div>
+
+<script>
+// --- REGISTRO DO SERVICE WORKER (PWA) ---
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+    .then(() => console.log("PWA: Sistema Offline Ativo"))
+    .catch(err => console.log("PWA: Erro no registro", err));
+}
+
+const azulEscuro = "#0b3c5d";
+const cinzaEscuro = "#444444";
+const TEXTO_CURTO = "Lesão intra-epitelial de baixo grau (HPV e neoplasia intra-epitelial cervical grau I)";
+const TEXTO_LONGO = "Lesão intra-epitelial de baixo grau (compreendendo efeito citopático pelo HPV e neoplasia intra-epitelial cervical grau I)";
+
+const subcategorias = {
+  "CÉLULAS ATÍPICAS DE SIGNIFICADO INDETERMINADO": [
+    "Escamosas: possivelmente não neoplásicas (ASC-US)",
+    "Escamosas: não se pode afastar lesão de alto grau (ASC-H)",
+    "Glandulares: possivelmente não neoplásicas",
+    "Glandulares: não se pode afastar lesão de alto grau",
+    "De origem indefinida: possivelmente não neoplásicas",
+    "De origem indefinida: não se pode afastar lesão de alto grau"
+  ],
+  "ATIPIAS EM CÉLULAS ESCAMOSAS": [
+    TEXTO_CURTO,
+    "Lesão intra-epitelial de alto grau (neoplasias intra-epiteliais cervicais graus II e III)",
+    "Lesão intra-epitelial de alto grau, não podendo excluir micro-invasão",
+    "Carcinoma epidermóide invasor"
+  ],
+  "ATIPIAS EM CÉLULAS GLANDULARES": [
+    'Adenocarcinoma "in situ"',
+    "Adenocarcinoma invasor, cervical",
+    "Adenocarcinoma invasor, endometrial",
+    "Adenocarcinoma invasor SOE, (sem outras especificações)"
+  ]
+};
+
+let pacientes = [];
+
+function mascaraTelefone(campo) {
+  let valor = campo.value.replace(/\D/g, "");
+  if (valor.length > 0) valor = "(" + valor;
+  if (valor.length > 3) valor = valor.slice(0, 3) + ")" + valor.slice(3);
+  if (valor.length > 9) valor = valor.slice(0, 9) + "-" + valor.slice(9, 13);
+  campo.value = valor;
+}
+
+function atualizaSubcategorias() {
+  const cat = document.getElementById("categoria").value;
+  const subcat = document.getElementById("subcategoria");
+  subcat.innerHTML = '<option value="">-- Selecione --</option>';
+  if(subcategorias[cat]) {
+    subcategorias[cat].forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      subcat.appendChild(opt);
+    });
+  }
+}
+
+function adicionarPaciente() {
+  const nome = document.getElementById("nome").value.trim();
+  const telefone = document.getElementById("telefone").value.trim();
+  const categoria = document.getElementById("categoria").value;
+  const subcategoria = document.getElementById("subcategoria").value;
+  if(!nome || !telefone || !categoria || !subcategoria) { alert("Preencha todos os campos!"); return; }
+  pacientes.push({nome, telefone, categoria, subcategoria});
+  salvarPacientes(); atualizarLista(); resetarCamposInput();
+}
+
+function atualizarLista() {
+  const container = document.getElementById("listaPacientes");
+  container.innerHTML = "";
+  pacientes.forEach((p, idx) => {
+    const diagExibicao = p.subcategoria === TEXTO_LONGO ? TEXTO_CURTO : p.subcategoria;
+    container.innerHTML += `<div class="patient-card">
+      <div class="patient-info"><strong>${p.nome}</strong><span>${p.telefone}</span><span>${diagExibicao}</span></div>
+      <div class="actions">
+        <button class="edit" onclick="editarPaciente(${idx})">Editar</button>
+        <button class="delete" onclick="excluirPaciente(${idx})">Excluir</button>
+      </div>
+    </div>`;
+  });
+}
+
+function editarPaciente(idx) {
+  const p = pacientes[idx];
+  document.getElementById("nome").value = p.nome;
+  document.getElementById("telefone").value = p.telefone;
+  document.getElementById("categoria").value = p.categoria;
+  atualizaSubcategorias();
+  document.getElementById("subcategoria").value = (p.subcategoria === TEXTO_LONGO) ? TEXTO_CURTO : p.subcategoria;
+  pacientes.splice(idx,1);
+  salvarPacientes(); atualizarLista();
+  document.getElementById("nome").focus(); 
+}
+
+function excluirPaciente(idx) {
+  if(confirm("Deseja realmente excluir este paciente?")) {
+      pacientes.splice(idx,1);
+      salvarPacientes(); atualizarLista();
+  }
+}
+
+function resetarCamposInput() {
+  document.getElementById("formPaciente").reset();
+  document.getElementById("subcategoria").innerHTML = '<option value="">-- Selecione --</option>';
+}
+
+function limparComSeguranca() {
+  if (pacientes.length === 0) { resetarCamposInput(); return; }
+  const mesNome = document.getElementById("mesSelecionado").selectedOptions[0].text;
+  if (confirm(`Deseja exportar um Backup antes de apagar os dados de ${mesNome}?`)) {
+    exportarBackup();
+    executarLimpeza(mesNome);
+  } else if (confirm(`Tem certeza que deseja apagar TUDO de ${mesNome} SEM fazer backup?`)) {
+    executarLimpeza(mesNome);
+  }
+}
+
+function executarLimpeza(mes) {
+  pacientes = [];
+  salvarPacientes();
+  atualizarLista();
+  resetarCamposInput();
+  alert(`Dados de ${mes} limpos com sucesso.`);
+}
+
+function salvarPacientes() {
+  const mesAno = document.getElementById("mesSelecionado").value;
+  localStorage.setItem("pacientes_"+mesAno, JSON.stringify(pacientes));
+}
+
+function carregarPacientesMes() {
+  const mesAno = document.getElementById("mesSelecionado").value;
+  const dados = localStorage.getItem("pacientes_"+mesAno);
+  pacientes = dados ? JSON.parse(dados) : [];
+  pacientes = pacientes.map(p => {
+    if(p.subcategoria === TEXTO_LONGO) p.subcategoria = TEXTO_CURTO;
+    return p;
+  });
+  atualizarLista();
+}
+
+function popularMeses() {
+  const select = document.getElementById("mesSelecionado");
+  const now = new Date();
+  const anoAtual = now.getFullYear();
+  select.innerHTML = "";
+  for(let i=0; i<12; i++){
+    const d = new Date(anoAtual, i, 1);
+    const mesAno = d.toISOString().slice(0,7);
+    let nomeMes = d.toLocaleString('pt-BR',{month:'long', year:'numeric'});
+    nomeMes = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+    const option = document.createElement("option");
+    option.value = mesAno;
+    option.textContent = nomeMes;
+    if (i === now.getMonth()) option.selected = true;
+    select.appendChild(option);
+  }
+}
+
+function exportarBackup() {
+  const backup = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith("pacientes_")) backup[key] = localStorage.getItem(key);
+  }
+  const blob = new Blob([JSON.stringify(backup)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `backup_neoplasias_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importarBackup(event) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const backup = JSON.parse(e.target.result);
+      for (const key in backup) localStorage.setItem(key, backup[key]);
+      alert("Backup importado com sucesso!");
+      location.reload();
+    } catch(err) { alert("Erro ao importar."); }
+  };
+  reader.readAsText(event.target.files[0]);
+}
+
+function gerarPDF() {
+    if (pacientes.length === 0) { alert("Adicione pacientes primeiro."); return; }
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const mesSelecionado = document.getElementById("mesSelecionado").selectedOptions[0].text;
+    
+    const desenharCabecalho = (titulo) => {
+        doc.setFont("helvetica","bold"); doc.setFontSize(14); doc.setTextColor(azulEscuro);
+        doc.text(titulo, 105, 20, {align:"center"});
+        doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(cinzaEscuro);
+        doc.text("UNIDADE MÓVEL SESC – SAÚDE DA MULHER", 105, 27, {align:"center"});
+        doc.setFontSize(10); doc.setTextColor("#333");
+        doc.text(`Mês de Referência: ${mesSelecionado}`, 190, 35, {align: "right"});
+        doc.setDrawColor(azulEscuro); doc.setLineWidth(0.5); doc.line(20, 38, 190, 38);
+        doc.setFontSize(7); doc.setTextColor(cinzaEscuro);
+        doc.text(`Página ${doc.internal.getNumberOfPages()}`, 190, 285, {align: "right"});
+    };
+
+    desenharCabecalho("RELATÓRIO INDIVIDUAL DE PACIENTES");
+    let y = 48;
+
+    pacientes.forEach((p)=>{
+        if(y > 270) { doc.addPage(); desenharCabecalho("RELATÓRIO INDIVIDUAL DE PACIENTES"); y = 48; }
+        doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor("#000");
+        doc.text(p.nome, 20, y); y+=6;
+        doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(azulEscuro);
+        doc.text(`TEL: ${p.telefone}`, 20, y); y+=5;
+        const subLimpo = p.subcategoria === TEXTO_LONGO ? TEXTO_CURTO : p.subcategoria;
+        const diagLines = doc.splitTextToSize(`DIAGNÓSTICO: ${subLimpo}`, 170);
+        diagLines.forEach(line => { doc.text(line, 20, y); y+=4.5; });
+        y+=5;
+    });
+
+    doc.addPage();
+    desenharCabecalho("COMPARATIVO ESTATÍSTICO DE NEOPLASIAS");
+    y = 48;
+
+    const resumoGrafico = {};
+    Object.keys(subcategorias).forEach(cat=>{
+        const pacientesCat = pacientes.filter(p=>p.categoria===cat);
+        if(pacientesCat.length===0) return;
+        resumoGrafico[cat] = pacientesCat.length;
+        if(y > 250) { doc.addPage(); desenharCabecalho("COMPARATIVO ESTATÍSTICO DE NEOPLASIAS"); y = 48; }
+        doc.setFillColor(238, 244, 251); doc.rect(20, y - 5, 170, 7, 'F');
+        doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(azulEscuro);
+        doc.text(cat, 22, y); y+=10;
+        const counts = {};
+        pacientesCat.forEach(p => { 
+            const sL = p.subcategoria === TEXTO_LONGO ? TEXTO_CURTO : p.subcategoria;
+            counts[sL] = (counts[sL]||0)+1; 
+        });
+        doc.setFont("helvetica","normal"); doc.setFontSize(9);
+        for(const [sub, count] of Object.entries(counts)){
+            const subLines = doc.splitTextToSize(sub, 140);
+            subLines.forEach(line => { doc.text(line, 25, y); y+=5; });
+            doc.setFont("helvetica","bold"); doc.text(`${count} caso(s)`, 185, y - 5, {align: "right"});
+            doc.setFont("helvetica","normal"); y+=3;
+        }
+        y+=5;
+    });
+
+    // --- GRÁFICO DE BARRAS ---
+    if(y > 200) { doc.addPage(); desenharCabecalho("COMPARATIVO ESTATÍSTICO DE NEOPLASIAS"); y = 48; }
+    y += 10;
+    doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(azulEscuro);
+    doc.text("DISTRIBUIÇÃO POR CATEGORIA PRINCIPAL", 105, y, {align: "center"});
+    y += 10;
+
+    const totalGeral = pacientes.length;
+    const categoriasGrafico = Object.entries(resumoGrafico);
+    const maxLarguraBarra = 120;
+
+    categoriasGrafico.forEach(([nome, total]) => {
+        const perc = (total / totalGeral);
+        const larguraBarra = perc * maxLarguraBarra;
+        doc.setFontSize(8); doc.setTextColor(cinzaEscuro); doc.setFont("helvetica","bold");
+        const label = nome.length > 45 ? nome.substring(0, 42) + "..." : nome;
+        doc.text(label, 20, y); y += 5;
+        doc.setFillColor(245, 245, 245); doc.rect(20, y, maxLarguraBarra, 6, 'F');
+        doc.setFillColor(11, 60, 93); doc.rect(20, y, larguraBarra, 6, 'F');
+        doc.setFontSize(9); doc.setTextColor("#000");
+        doc.text(`${total} (${(perc*100).toFixed(1)}%)`, 25 + maxLarguraBarra, y + 4.5);
+        y += 12;
+    });
+
+    const fY = 265;
+    doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2); doc.line(70, fY, 140, fY);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(azulEscuro);
+    doc.text("MARCOS PONTES", 105, fY + 6, {align: "center"});
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(cinzaEscuro);
+    doc.text("Responsável Técnico / Coordenação", 105, fY + 10, {align: "center"});
+    doc.text(`Gerado em João Pessoa, 16 de janeiro de 2026`, 20, 285);
+    doc.save(`Relatório de Neoplasias - ${mesSelecionado}.pdf`);
+}
+
+popularMeses();
+carregarPacientesMes();
+</script>
 </body>
 </html>
