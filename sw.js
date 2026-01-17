@@ -1,4 +1,4 @@
-const cacheName = 'sesc-neoplasias-v2';
+const cacheName = 'sesc-neoplasias-v3';
 const assets = [
   './',
   './index.html',
@@ -22,3 +22,4 @@ self.addEventListener('fetch', e => {
     })
   );
 });
+
