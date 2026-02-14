@@ -31,7 +31,7 @@ form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)
 
 label { font-weight: bold; font-size: 13px; }
 
-#mesSelecionado {
+#mesSelecionado, #anoRelatorioAnual {
   width: auto;
   min-width: 250px;
   padding: 10px 14px;
@@ -83,11 +83,68 @@ button.backup-btn:hover { background-color: #e8eaed; }
 .patient-info { display: flex; flex-direction: column; gap: 3px; }
 .actions { display: flex; gap: 8px; }
 
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+  background-color: #fff;
+  margin: 10% auto;
+  padding: 30px;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 450px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.modal-content h3 {
+  color: #0b3c5d;
+  margin-bottom: 20px;
+  text-align: center;
+  font-size: 18px;
+}
+
+.modal-content label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: bold;
+  color: #333;
+}
+
+.modal-content select {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  border: 2px solid #0b3c5d;
+  font-size: 16px;
+  font-weight: bold;
+  color: #0b3c5d;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.modal-buttons button {
+  flex: 1;
+}
+
 @media(max-width:600px){
   form { grid-template-columns: 1fr; }
   .patient-card { flex-direction: column; align-items: flex-start; }
   .actions { margin-top: 6px; }
   .button-group, .backup-group { flex-direction: column; align-items: stretch; }
+  .modal-content { margin: 20% auto; width: 95%; }
 }
 </style>
 </head>
@@ -133,7 +190,7 @@ button.backup-btn:hover { background-color: #e8eaed; }
     <div class="button-group">
       <button type="submit" class="add">Adicionar Paciente</button>
       <button type="button" class="report" onclick="gerarPDF()">Gerar Relatório Mensal</button>
-      <button type="button" class="report-annual" onclick="gerarPDFAnual()">Gerar Relatório Anual</button>
+      <button type="button" class="report-annual" onclick="abrirModalRelatorioAnual()">Gerar Relatório Anual</button>
       <button type="button" class="delete" onclick="limparComSeguranca()">Limpar Formulário</button>
     </div>
 
@@ -145,6 +202,19 @@ button.backup-btn:hover { background-color: #e8eaed; }
   </form>
 
   <div class="list-container" id="listaPacientes"></div>
+</div>
+
+<!-- Modal para selecionar ano do relatório anual -->
+<div id="modalRelatorioAnual" class="modal">
+  <div class="modal-content">
+    <h3>Selecione o Ano do Relatório</h3>
+    <label for="anoRelatorioAnual">Ano:</label>
+    <select id="anoRelatorioAnual"></select>
+    <div class="modal-buttons">
+      <button class="report-annual" onclick="confirmarRelatorioAnual()">Gerar Relatório</button>
+      <button class="delete" onclick="fecharModalRelatorioAnual()">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -327,6 +397,35 @@ function popularMeses() {
   }
 }
 
+function popularAnosRelatorio() {
+  const select = document.getElementById("anoRelatorioAnual");
+  const anoAtual = new Date().getFullYear();
+  select.innerHTML = "";
+  
+  // Adiciona ano atual e anos anteriores (até 5 anos atrás)
+  for(let ano = anoAtual; ano >= anoAtual - 5; ano--) {
+    const option = document.createElement("option");
+    option.value = ano;
+    option.textContent = ano;
+    select.appendChild(option);
+  }
+}
+
+function abrirModalRelatorioAnual() {
+  popularAnosRelatorio();
+  document.getElementById("modalRelatorioAnual").style.display = "block";
+}
+
+function fecharModalRelatorioAnual() {
+  document.getElementById("modalRelatorioAnual").style.display = "none";
+}
+
+function confirmarRelatorioAnual() {
+  const anoSelecionado = parseInt(document.getElementById("anoRelatorioAnual").value);
+  fecharModalRelatorioAnual();
+  gerarPDFAnual(anoSelecionado);
+}
+
 function exportarBackup() {
   const backup = {};
   for (let i = 0; i < localStorage.length; i++) {
@@ -445,32 +544,50 @@ function gerarPDF() {
     doc.text("MARCOS PONTES", 105, fY + 6, {align: "center"});
     doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(cinzaEscuro);
     doc.text("Responsável Técnico", 105, fY + 10, {align: "center"});
-    doc.text(`Gerado em João Pessoa, 16 de janeiro de 2026`, 20, 285);
+    
+    const hoje = new Date();
+    const dataFormatada = hoje.toLocaleDateString('pt-BR', {day: 'numeric', month: 'long', year: 'numeric'});
+    doc.text(`Gerado em João Pessoa, ${dataFormatada}`, 20, 285);
     doc.save(`Relatório de Neoplasias - ${mesSelecionado}.pdf`);
 }
 
-function gerarPDFAnual() {
-    const anoAtual = new Date().getFullYear();
+function gerarPDFAnual(anoSelecionado) {
     const todosOsPacientes = [];
+    let mesesComDados = [];
     
-    // Coletar todos os pacientes de todos os meses do ano
+    // Coletar todos os pacientes de todos os meses do ano selecionado
     for(let mes = 0; mes < 12; mes++) {
-        const d = new Date(anoAtual, mes, 1);
+        const d = new Date(anoSelecionado, mes, 1);
         const mesAno = d.toISOString().slice(0,7);
         const dados = localStorage.getItem("pacientes_"+mesAno);
         if(dados) {
             const pacientesMes = JSON.parse(dados).map(p => {
                 if(p.subcategoria === TEXTO_LONGO) p.subcategoria = TEXTO_CURTO;
-                return {...p, mes: d.toLocaleString('pt-BR', {month: 'long'})};
+                return {...p, mes: d.toLocaleString('pt-BR', {month: 'long'}), mesNumero: mes + 1};
             });
-            todosOsPacientes.push(...pacientesMes);
+            if(pacientesMes.length > 0) {
+                todosOsPacientes.push(...pacientesMes);
+                mesesComDados.push({
+                    nome: d.toLocaleString('pt-BR', {month: 'long'}),
+                    quantidade: pacientesMes.length
+                });
+            }
         }
     }
     
     if (todosOsPacientes.length === 0) { 
-        alert("Não há dados registrados no ano atual para gerar o relatório anual."); 
+        alert(`Não há dados registrados no ano ${anoSelecionado} para gerar o relatório anual.`); 
         return; 
     }
+    
+    // Mostrar mensagem de confirmação com informações dos meses
+    let msgMeses = `Encontrados ${todosOsPacientes.length} caso(s) em ${mesesComDados.length} mês(es):\n\n`;
+    mesesComDados.forEach(m => {
+        msgMeses += `${m.nome}: ${m.quantidade} caso(s)\n`;
+    });
+    msgMeses += `\nDeseja gerar o relatório anual de ${anoSelecionado}?`;
+    
+    if(!confirm(msgMeses)) return;
     
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -481,7 +598,7 @@ function gerarPDFAnual() {
         doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(cinzaEscuro);
         doc.text("UNIDADE MÓVEL SESC – SAÚDE DA MULHER", 105, 27, {align:"center"});
         doc.setFontSize(10); doc.setTextColor("#333");
-        doc.text(`Ano de Referência: ${anoAtual}`, 190, 35, {align: "right"});
+        doc.text(`Ano de Referência: ${anoSelecionado}`, 190, 35, {align: "right"});
         doc.setDrawColor(azulEscuro); doc.setLineWidth(0.5); doc.line(20, 38, 190, 38);
         doc.setFontSize(7); doc.setTextColor(cinzaEscuro);
         doc.text(`Página ${doc.internal.getNumberOfPages()}`, 190, 285, {align: "right"});
@@ -562,7 +679,7 @@ function gerarPDFAnual() {
 
     const casosPorMes = {};
     for(let mes = 0; mes < 12; mes++) {
-        const d = new Date(anoAtual, mes, 1);
+        const d = new Date(anoSelecionado, mes, 1);
         const mesNome = d.toLocaleString('pt-BR', {month: 'long'});
         const mesAno = d.toISOString().slice(0,7);
         const dados = localStorage.getItem("pacientes_"+mesAno);
@@ -589,8 +706,11 @@ function gerarPDFAnual() {
     doc.text("MARCOS PONTES", 105, fY + 6, {align: "center"});
     doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(cinzaEscuro);
     doc.text("Responsável Técnico", 105, fY + 10, {align: "center"});
-    doc.text(`Gerado em João Pessoa, 16 de janeiro de 2026`, 20, 285);
-    doc.save(`Relatório Anual de Neoplasias - ${anoAtual}.pdf`);
+    
+    const hoje = new Date();
+    const dataFormatada = hoje.toLocaleDateString('pt-BR', {day: 'numeric', month: 'long', year: 'numeric'});
+    doc.text(`Gerado em João Pessoa, ${dataFormatada}`, 20, 285);
+    doc.save(`Relatório Anual de Neoplasias - ${anoSelecionado}.pdf`);
 }
 
 popularMeses();
