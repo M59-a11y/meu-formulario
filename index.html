@@ -27,6 +27,33 @@ body { background: #f5f5f5; padding: 20px; color: #333; }
 h1 { color: #0b3c5d; font-weight: bold; font-size: 22px; text-align: center; margin-bottom: 4px; }
 h2 { color: #0b3c5d; font-weight: bold; font-size: 12px; text-align: center; margin-bottom: 20px; letter-spacing: 0.5px; }
 
+.alert-box {
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+  display: none;
+}
+
+.alert-box.show {
+  display: block;
+}
+
+.alert-box strong {
+  color: #856404;
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.alert-box p {
+  color: #856404;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
 form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 10px; align-items:end; }
 
 label { font-weight: bold; font-size: 13px; }
@@ -100,7 +127,7 @@ button.backup-btn:hover { background-color: #e8eaed; }
   padding: 30px;
   border-radius: 12px;
   width: 90%;
-  max-width: 450px;
+  max-width: 500px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 
@@ -109,6 +136,27 @@ button.backup-btn:hover { background-color: #e8eaed; }
   margin-bottom: 20px;
   text-align: center;
   font-size: 18px;
+}
+
+.modal-content .warning-box {
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+  padding: 12px 15px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+.modal-content .warning-box p {
+  color: #856404;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.modal-content .warning-box strong {
+  color: #856404;
+  display: block;
+  margin-bottom: 5px;
 }
 
 .modal-content label {
@@ -139,6 +187,21 @@ button.backup-btn:hover { background-color: #e8eaed; }
   flex: 1;
 }
 
+.info-section {
+  background: #e3f2fd;
+  padding: 12px 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  border-left: 4px solid #2196f3;
+}
+
+.info-section p {
+  font-size: 13px;
+  color: #1565c0;
+  margin: 0;
+  line-height: 1.5;
+}
+
 @media(max-width:600px){
   form { grid-template-columns: 1fr; }
   .patient-card { flex-direction: column; align-items: flex-start; }
@@ -153,6 +216,11 @@ button.backup-btn:hover { background-color: #e8eaed; }
 <div class="container">
   <h1>Formulário Hospitalar de Neoplasias</h1>
   <h2>Gestão e Relatórios Estáticos</h2>
+
+  <div class="alert-box" id="alertBackup">
+    <strong>⚠️ IMPORTANTE: Dados de meses anteriores foram limpos</strong>
+    <p>Para gerar o relatório anual completo, você precisa primeiro <strong>importar o backup</strong> que contém os dados dos meses anteriores. Use o botão "📂 Importar Backup" abaixo.</p>
+  </div>
 
   <div style="text-align:center; margin-bottom:25px;">
     <label for="mesSelecionado" style="display:block; margin-bottom:5px;">Consultar mês:</label>
@@ -197,7 +265,7 @@ button.backup-btn:hover { background-color: #e8eaed; }
     <div class="backup-group">
       <button type="button" class="backup-btn" onclick="exportarBackup()">💾 Exportar Backup Geral</button>
       <button type="button" class="backup-btn" onclick="document.getElementById('inputBackup').click()">📂 Importar Backup</button>
-      <input type="file" id="inputBackup" style="display:none" onchange="importarBackup(event)">
+      <input type="file" id="inputBackup" style="display:none" accept=".json" onchange="importarBackup(event)">
     </div>
   </form>
 
@@ -207,9 +275,20 @@ button.backup-btn:hover { background-color: #e8eaed; }
 <!-- Modal para selecionar ano do relatório anual -->
 <div id="modalRelatorioAnual" class="modal">
   <div class="modal-content">
-    <h3>Selecione o Ano do Relatório</h3>
-    <label for="anoRelatorioAnual">Ano:</label>
+    <h3>Gerar Relatório Anual</h3>
+    
+    <div class="warning-box">
+      <strong>⚠️ ATENÇÃO:</strong>
+      <p>Se você limpou dados de meses anteriores, precisa <strong>importar o backup</strong> primeiro para que todos os meses apareçam no relatório anual!</p>
+    </div>
+
+    <label for="anoRelatorioAnual">Selecione o ano:</label>
     <select id="anoRelatorioAnual"></select>
+    
+    <div class="info-section" id="mesesDisponiveis">
+      <p><strong>Verificando dados disponíveis...</strong></p>
+    </div>
+    
     <div class="modal-buttons">
       <button class="report-annual" onclick="confirmarRelatorioAnual()">Gerar Relatório</button>
       <button class="delete" onclick="fecharModalRelatorioAnual()">Cancelar</button>
@@ -361,6 +440,7 @@ function executarLimpeza(mes) {
   atualizarLista();
   resetarCamposInput();
   alert(`Dados de ${mes} limpos com sucesso.`);
+  verificarDadosFaltantes();
 }
 
 function salvarPacientes() {
@@ -402,17 +482,72 @@ function popularAnosRelatorio() {
   const anoAtual = new Date().getFullYear();
   select.innerHTML = "";
   
-  // Adiciona ano atual e anos anteriores (até 5 anos atrás)
   for(let ano = anoAtual; ano >= anoAtual - 5; ano--) {
     const option = document.createElement("option");
     option.value = ano;
     option.textContent = ano;
     select.appendChild(option);
   }
+  
+  select.addEventListener('change', atualizarInfoMeses);
+}
+
+function verificarDadosFaltantes() {
+  const anoAtual = new Date().getFullYear();
+  let mesesComDados = 0;
+  
+  for(let mes = 0; mes < 12; mes++) {
+    const d = new Date(anoAtual, mes, 1);
+    const mesAno = d.toISOString().slice(0,7);
+    const dados = localStorage.getItem("pacientes_"+mesAno);
+    if(dados && JSON.parse(dados).length > 0) {
+      mesesComDados++;
+    }
+  }
+  
+  const mesAtual = new Date().getMonth() + 1;
+  if(mesesComDados < mesAtual - 1) {
+    document.getElementById("alertBackup").classList.add("show");
+  }
+}
+
+function atualizarInfoMeses() {
+  const anoSelecionado = parseInt(document.getElementById("anoRelatorioAnual").value);
+  const infoDiv = document.getElementById("mesesDisponiveis");
+  
+  let mesesComDados = [];
+  let totalCasos = 0;
+  
+  for(let mes = 0; mes < 12; mes++) {
+    const d = new Date(anoSelecionado, mes, 1);
+    const mesAno = d.toISOString().slice(0,7);
+    const dados = localStorage.getItem("pacientes_"+mesAno);
+    if(dados) {
+      const pacientesMes = JSON.parse(dados);
+      if(pacientesMes.length > 0) {
+        mesesComDados.push({
+          nome: d.toLocaleString('pt-BR', {month: 'long'}),
+          quantidade: pacientesMes.length
+        });
+        totalCasos += pacientesMes.length;
+      }
+    }
+  }
+  
+  if(mesesComDados.length === 0) {
+    infoDiv.innerHTML = '<p><strong>⚠️ Nenhum dado encontrado para ' + anoSelecionado + '</strong><br>Importe o backup primeiro!</p>';
+  } else {
+    let html = '<p><strong>📊 Dados disponíveis em ' + anoSelecionado + ':</strong><br>';
+    html += totalCasos + ' caso(s) em ' + mesesComDados.length + ' mês(es): ';
+    html += mesesComDados.map(m => m.nome + ' (' + m.quantidade + ')').join(', ');
+    html += '</p>';
+    infoDiv.innerHTML = html;
+  }
 }
 
 function abrirModalRelatorioAnual() {
   popularAnosRelatorio();
+  atualizarInfoMeses();
   document.getElementById("modalRelatorioAnual").style.display = "block";
 }
 
@@ -445,10 +580,17 @@ function importarBackup(event) {
   reader.onload = function(e) {
     try {
       const backup = JSON.parse(e.target.result);
-      for (const key in backup) localStorage.setItem(key, backup[key]);
-      alert("Backup importado com sucesso!");
+      let mesesImportados = 0;
+      for (const key in backup) {
+        localStorage.setItem(key, backup[key]);
+        mesesImportados++;
+      }
+      alert(`Backup importado com sucesso!\n${mesesImportados} mês(es) restaurado(s).`);
+      verificarDadosFaltantes();
       location.reload();
-    } catch(err) { alert("Erro ao importar."); }
+    } catch(err) { 
+      alert("Erro ao importar backup. Verifique se o arquivo está correto."); 
+    }
   };
   reader.readAsText(event.target.files[0]);
 }
@@ -506,7 +648,7 @@ function gerarPDF() {
             counts[sL] = (counts[sL]||0)+1; 
         });
         doc.setFont("helvetica","normal"); doc.setFontSize(9);
-        for(const [sub, count] of Object.entries(counts)){
+        for(const[sub, count] of Object.entries(counts)){
             const subLines = doc.splitTextToSize(sub, 140);
             subLines.forEach(line => { doc.text(line, 25, y); y+=5; });
             doc.setFont("helvetica","bold"); doc.text(`${count} caso(s)`, 185, y - 5, {align: "right"});
@@ -555,7 +697,6 @@ function gerarPDFAnual(anoSelecionado) {
     const todosOsPacientes = [];
     let mesesComDados = [];
     
-    // Coletar todos os pacientes de todos os meses do ano selecionado
     for(let mes = 0; mes < 12; mes++) {
         const d = new Date(anoSelecionado, mes, 1);
         const mesAno = d.toISOString().slice(0,7);
@@ -576,18 +717,9 @@ function gerarPDFAnual(anoSelecionado) {
     }
     
     if (todosOsPacientes.length === 0) { 
-        alert(`Não há dados registrados no ano ${anoSelecionado} para gerar o relatório anual.`); 
+        alert(`❌ Não há dados no ano ${anoSelecionado}!\n\n💡 Se você limpou dados anteriores:\n1. Clique em "📂 Importar Backup"\n2. Selecione seu arquivo de backup\n3. Tente gerar o relatório novamente`); 
         return; 
     }
-    
-    // Mostrar mensagem de confirmação com informações dos meses
-    let msgMeses = `Encontrados ${todosOsPacientes.length} caso(s) em ${mesesComDados.length} mês(es):\n\n`;
-    mesesComDados.forEach(m => {
-        msgMeses += `${m.nome}: ${m.quantidade} caso(s)\n`;
-    });
-    msgMeses += `\nDeseja gerar o relatório anual de ${anoSelecionado}?`;
-    
-    if(!confirm(msgMeses)) return;
     
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -670,7 +802,6 @@ function gerarPDFAnual(anoSelecionado) {
         y += 12;
     });
 
-    // Adicionar distribuição mensal
     if(y > 180) { doc.addPage(); desenharCabecalho("COMPARATIVO ESTATÍSTICO ANUAL DE NEOPLASIAS"); y = 48; }
     y += 10;
     doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(azulEscuro);
@@ -715,6 +846,7 @@ function gerarPDFAnual(anoSelecionado) {
 
 popularMeses();
 carregarPacientesMes();
+verificarDadosFaltantes();
 </script>
 </body>
 </html>
