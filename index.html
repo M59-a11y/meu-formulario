@@ -606,6 +606,97 @@ if ('serviceWorker' in navigator) {
     .catch(err => console.log("PWA erro:", err));
 }
 
+
+/* ===============================
+   BACKUP SEGURO (sem mudar layout)
+   - localStorage + IndexedDB
+   - Mantém relatórios anuais funcionando
+=============================== */
+
+const IDB_NAME = 'neoplasias_backup_db';
+const IDB_STORE = 'kv';
+const IDB_VER = 1;
+
+function idbOpen(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VER);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE, { keyPath: 'k' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbPut(k, v){
+  try{
+    const db = await idbOpen();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put({ k, v, updatedAt: Date.now() });
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { const e = tx.error; db.close(); reject(e); };
+    });
+  }catch(e){}
+}
+
+async function idbGet(k){
+  try{
+    const db = await idbOpen();
+    const res = await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(k);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return res;
+  }catch(e){
+    return null;
+  }
+}
+
+async function idbGetAllKeys(prefix){
+  try{
+    const db = await idbOpen();
+    const res = await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.getAllKeys();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return res.filter(k => typeof k === 'string' && k.startsWith(prefix));
+  }catch(e){
+    return [];
+  }
+}
+
+/* Sincroniza do IndexedDB → localStorage (somente se faltar) */
+async function syncFromIDB(){
+  const keys = await idbGetAllKeys('pacientes_');
+  let restored = 0;
+
+  for (const k of keys){
+    if (!localStorage.getItem(k)){
+      const rec = await idbGet(k);
+      if (rec && rec.v){
+        localStorage.setItem(k, rec.v);
+        restored++;
+      }
+    }
+  }
+
+  if (restored > 0){
+    // Não recarrega a página; apenas sinaliza e atualiza as rotinas que dependem do localStorage
+    verificarDadosFaltantes();
+  }
+}
+
 const azulEscuro = "#0b3c5d";
 const cinzaEscuro = "#444444";
 const TEXTO_CURTO = "Lesão intra-epitelial de baixo grau (HPV e neoplasia intra-epitelial cervical grau I)";
@@ -736,15 +827,42 @@ function executarLimpeza(mes) {
 
 function salvarPacientes() {
   const ma = document.getElementById("mesSelecionado").value;
-  localStorage.setItem("pacientes_"+ma, JSON.stringify(pacientes));
+  const key = "pacientes_" + ma;
+  const val = JSON.stringify(pacientes);
+  localStorage.setItem(key, val);
+  idbPut(key, val); // backup robusto
 }
 
 function carregarPacientesMes() {
   const ma = document.getElementById("mesSelecionado").value;
-  const d = localStorage.getItem("pacientes_"+ma);
-  pacientes = d ? JSON.parse(d) : [];
-  pacientes = pacientes.map(p=>{ if(p.subcategoria===TEXTO_LONGO) p.subcategoria=TEXTO_CURTO; return p; });
-  atualizarLista();
+  const key = "pacientes_" + ma;
+
+  const usarDados = (raw) => {
+    pacientes = raw ? JSON.parse(raw) : [];
+    pacientes = pacientes.map(p=>{ if(p.subcategoria===TEXTO_LONGO) p.subcategoria=TEXTO_CURTO; return p; });
+    atualizarLista();
+  };
+
+  const raw = localStorage.getItem(key);
+
+  // Se não houver nada no localStorage, tenta no IndexedDB
+  if (!raw){
+    idbGet(key).then((rec) => {
+      if (rec && rec.v){
+        const ok = confirm("Encontrei um backup mais completo para este mês. Deseja restaurar?");
+        if (ok){
+          localStorage.setItem(key, rec.v);
+          usarDados(rec.v);
+          verificarDadosFaltantes();
+          return;
+        }
+      }
+      usarDados(raw);
+    });
+    return;
+  }
+
+  usarDados(raw);
 }
 
 function popularMeses() {
@@ -838,7 +956,7 @@ function importarBackup(event) {
     try{
       const b=JSON.parse(e.target.result);
       let n=0;
-      for(const k in b){localStorage.setItem(k,b[k]);n++;}
+      for(const k in b){localStorage.setItem(k,b[k]); idbPut(k,b[k]); n++;}
       alert(`Backup importado!\n${n} mês(es) restaurado(s).`);
       verificarDadosFaltantes();
       location.reload();
@@ -983,9 +1101,11 @@ function _gerarPDFComum(doc, lista, mes, ano) {
   doc.text(`Gerado em João Pessoa, ${dataF}`,20,285);
 }
 
-popularMeses();
-carregarPacientesMes();
-verificarDadosFaltantes();
-</script>
+(async () => {
+  await syncFromIDB();
+  popularMeses();
+  carregarPacientesMes();
+  verificarDadosFaltantes();
+})();</script>
 </body>
 </html>
