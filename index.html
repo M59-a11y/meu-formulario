@@ -950,16 +950,87 @@ function exportarBackup() {
   a.click();
 }
 
+function detectarCategoriaSubcategoria(conclusao) {
+  if(!conclusao) return null;
+  const c = conclusao.toUpperCase();
+
+  // Mapeia categoria e busca subcategoria mais próxima
+  let categoria = null;
+  if(c.includes("CÉLULAS ATÍPICAS DE SIGNIFICADO INDETERMINADO") || c.includes("ASC-US") || c.includes("ASC-H")) {
+    categoria = "CÉLULAS ATÍPICAS DE SIGNIFICADO INDETERMINADO";
+  } else if(c.includes("ATIPIAS EM CÉLULAS ESCAMOSAS") || c.includes("LESÃO INTRA-EPITELIAL") || c.includes("CARCINOMA EPIDERMÓIDE")) {
+    categoria = "ATIPIAS EM CÉLULAS ESCAMOSAS";
+  } else if(c.includes("ATIPIAS EM CÉLULAS GLANDULARES") || c.includes("ADENOCARCINOMA")) {
+    categoria = "ATIPIAS EM CÉLULAS GLANDULARES";
+  }
+  if(!categoria) return null;
+
+  // Busca subcategoria com maior sobreposição de palavras
+  const palavras = c.replace(/[^\wÀ-ÿ\s]/g,'').split(/\s+/).filter(p=>p.length>3);
+  let melhorSub = null, melhorScore = -1;
+  subcategorias[categoria].forEach(sub => {
+    const subUp = sub.toUpperCase().replace(/[^\wÀ-ÿ\s]/g,'');
+    const score = palavras.filter(p => subUp.includes(p)).length;
+    if(score > melhorScore){ melhorScore = score; melhorSub = sub; }
+  });
+
+  return melhorSub ? { categoria, subcategoria: melhorSub } : null;
+}
+
 function importarBackup(event) {
   const reader=new FileReader();
   reader.onload=e=>{
     try{
       const b=JSON.parse(e.target.result);
+
+      // Detecta formato: backup nativo (chaves "pacientes_AAAA-MM")
+      // ou laudo individual do Ely Chaves (tem campo "conclusao" ou "num_exame")
+      const isLaudoElyChaves = b.nome && (b.conclusao !== undefined || b.num_exame);
+
+      if(isLaudoElyChaves) {
+        // Importar laudo individual do Ely Chaves
+        const cs = detectarCategoriaSubcategoria(b.conclusao || '');
+        if(!cs){ alert("Não foi possível identificar a categoria/subcategoria a partir da conclusão do laudo.\n\nVerifique se o campo 'conclusao' está preenchido."); return; }
+
+        // Determina a chave do mês a partir de data_coleta ou emissao
+        const dataRef = b.data_coleta || b.emissao || '';
+        const partes = dataRef.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        const ma = partes ? `${partes[3]}-${partes[2]}` : document.getElementById("mesSelecionado").value;
+
+        const key = "pacientes_" + ma;
+        const existente = localStorage.getItem(key);
+        const lista = existente ? JSON.parse(existente) : [];
+
+        // Evita duplicata pelo nome
+        if(lista.some(p => p.nome === b.nome)){
+          alert(`Paciente "${b.nome}" já está cadastrada neste mês.`);
+          return;
+        }
+
+        lista.push({ nome: b.nome, telefone: b.telefone || '', categoria: cs.categoria, subcategoria: cs.subcategoria });
+        const val = JSON.stringify(lista);
+        localStorage.setItem(key, val);
+        idbPut(key, val);
+
+        // Navega para o mês correto
+        const sel = document.getElementById("mesSelecionado");
+        if(sel.value !== ma){
+          for(let i=0;i<sel.options.length;i++){ if(sel.options[i].value===ma){ sel.selectedIndex=i; break; } }
+        }
+
+        alert(`Paciente importada com sucesso!\n\nNome: ${b.nome}\nCategoria: ${cs.categoria}\nSubcategoria: ${cs.subcategoria}`);
+        verificarDadosFaltantes();
+        carregarPacientesMes();
+        return;
+      }
+
+      // Formato backup nativo
       let n=0;
       for(const k in b){localStorage.setItem(k,b[k]); idbPut(k,b[k]); n++;}
       alert(`Backup importado!\n${n} mês(es) restaurado(s).`);
       verificarDadosFaltantes();
       location.reload();
+
     }catch(err){alert("Erro ao importar backup. Verifique o arquivo.");}
   };
   reader.readAsText(event.target.files[0]);
